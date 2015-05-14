@@ -1,7 +1,11 @@
+# cython: cdivision=True
+# cython: boundscheck=False
+# cython: wraparound=False
+from __future__ import absolute_import, division, print_function
 import time
 import numpy as np
 import scipy.linalg
-from numpy import zeros, ascontiguousarray, asfortranarray, real
+from numpy import zeros, ascontiguousarray, asfortranarray, asarray, real
 from numpy cimport npy_intp
 
 from libc.math cimport exp, sqrt, fabs, log
@@ -152,7 +156,7 @@ cdef class ReversibleHolmesRateMatrixEMFitter(object):
         for i in range(self.n):
             pi[i] /= pi_norm
 
-        tmat = scipy.linalg.expm(ratemat)
+        tmat = ascontiguousarray(scipy.linalg.expm(asarray(ratemat)))
 
         cdef double[:, ::1] psi = self._build_psi(w)
         cdef double[:, :, :, ::1] p_kijl = self._build_p_abcd(U, V.T, psi)
