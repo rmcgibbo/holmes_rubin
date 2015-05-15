@@ -1,6 +1,7 @@
 # cython: boundscheck=False, cdivision=True, wraparound=False, c_string_encoding=ascii
 import numpy as np
 import scipy.linalg
+import scipy.optimize
 from numpy import zeros, asarray, ascontiguousarray, asfortranarray, real
 
 from numpy cimport npy_intp
@@ -8,7 +9,6 @@ from libc.math cimport exp, sqrt, log
 from libc.string cimport strcmp, memset
 from libc.float cimport DBL_MIN, DBL_MAX
 
-# from cy_blas cimport cdgemm_TN, cdgemm_NT, cdgemm_NN
 include "support.pyx"
 
 
@@ -25,6 +25,12 @@ cdef class KalbfleischLawless(object):
         self.t = t
         self.n = countsmat.shape[0]
         self.n_triu = self.n * (self.n-1)/2
+
+    def fit(self, const double[::1] theta, int max_iter=100):
+        result = scipy.optimize.minimize(
+            self.f, jac=self.fprime, hess=self.fhess, x0=theta,
+            options=dict(maxiter=max_iter), method='trust-ncg')
+        return result
 
     def f(self, const double[::1] theta):
         cdef npy_intp i, j

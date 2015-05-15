@@ -68,3 +68,12 @@ def test_3():
     hess2 = _ratematrix.hessian(theta, countsmat1, t=1)
 
     np.testing.assert_array_almost_equal(hess, hess2)
+
+
+def test_4():
+    n = countsmat1.shape[0]
+    theta = example_theta(n)
+
+    fitter = KalbfleischLawless(countsmat1, t=1)
+    print(fitter.fit(theta))
+
