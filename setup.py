@@ -3,10 +3,15 @@ from setuptools import setup, Extension
 import Cython
 from Cython.Distutils import build_ext
 
-ext = Extension('holmes_rubin',
-        language='c++',
-        sources=['holmes_rubin.pyx'],
-        include_dirs=[np.get_include()])
+ext1 = Extension('holmes_rubin',
+         language='c++',
+         sources=['holmes_rubin.pyx'],
+         include_dirs=[np.get_include()])
+
+ext2 = Extension('kalbfleisch_lawless',
+         language='c++',
+         sources=['kalbfleisch_lawless.pyx'],
+         include_dirs=[np.get_include()])
 
 setup(name='holmes_rubin',
       author='Robert McGibbon',
@@ -14,5 +19,5 @@ setup(name='holmes_rubin',
       url='https://github.com/rmcgibbo/holmes_rubin',
       platforms=['Linux', 'Mac OS-X', 'Unix'],
       zip_safe=False,
-      ext_modules=[ext],
+      ext_modules=[ext1, ext2],
       cmdclass={'build_ext': build_ext})
