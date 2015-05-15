@@ -1,3 +1,4 @@
+# cython: boundscheck=False, cdivision=True, wraparound=False, c_string_encoding=ascii
 import numpy as np
 import scipy.linalg
 from numpy import zeros, asarray, ascontiguousarray, asfortranarray, real
@@ -79,7 +80,7 @@ cdef class KalbfleischLawless(object):
         cdef npy_intp size = theta.shape[0]
         cdef double hessian_ab
         cdef double t = self.t
-        cdef double[::1] w, expwt
+        cdef double[::1] w, expwt, rowsums
         cdef double[:, ::1] U, V, T, Q, dT_dTheta_a, dT_dTheta_b, hessian
         expwt = zeros(n)
         Q = zeros((n, n))
@@ -110,10 +111,12 @@ cdef class KalbfleischLawless(object):
         return asarray(hessian)
 
     def _transmat(self, double[::1] theta):
+        cdef npy_intp i
         cdef npy_intp n = self.n
         cdef npy_intp n_triu = self.n_triu
         cdef double t = self.t
-        cdef double[::1] w
+        cdef double rowsum
+        cdef double[::1] w, pi
         cdef double[:, ::1] U, V, S, T, temp1
         S = zeros((n, n))
         T = zeros((n, n))
