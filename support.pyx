@@ -1,8 +1,19 @@
-# This file is designed to be included by _ratematrix.pyx
+# cython: boundscheck=False, cdivision=True, wraparound=False, c_string_encoding=ascii
+import numpy as np
+import scipy.linalg
+from numpy import zeros, ascontiguousarray, asfortranarray, real
+
+from numpy cimport npy_intp
+from libc.math cimport sqrt, exp, log
+from libc.string cimport memset, strcmp
 from libc.float cimport DBL_MIN, DBL_MAX
 cdef double log_dbl_min = log(DBL_MIN)
 cdef double log_dbl_max = log(DBL_MAX)
 cdef double NAN = np.nan
+DEF DEBUG = False
+
+include "cy_blas.pyx"
+include "triu_utils.pyx"
 
 
 cpdef eig_K(const double[:, ::1] A, npy_intp n, double[::1] pi=None, which='K'):
@@ -247,3 +258,184 @@ cdef double exprel(double x) nogil:
       return (exp(x) - 1.0)/x
 
     return NAN
+
+
+
+cpdef int build_ratemat(const double[::1] theta, npy_intp n, double[:, ::1] out,
+                        const char* which=b'K'):
+    r"""build_ratemat(theta, n, out, which='K')
+
+    Build the reversible rate matrix K or symmetric rate matrix, S,
+    from the free parameters, `\theta`
+
+    Parameters
+    ----------
+    theta : array
+        The free parameters, `\theta`. These values are the linearized elements
+        of the upper triangular portion of the symmetric rate matrix, S,
+        followed by the log equilibrium weights.
+    n : int
+        Dimension of the rate matrix, K, (number of states)
+    which : {'S', 'K'}
+        Whether to build the matrix S or the matrix K
+    out : [output], array shape=(n, n)
+        On exit, out contains the matrix K or S
+    """
+    cdef npy_intp u = 0, k = 0, i = 0, j = 0
+    cdef npy_intp n_triu = n*(n-1)/2
+    cdef double s_ij, K_ij, K_ji
+    cdef double[::1] pi
+    cdef int buildS = strcmp(which, 'S') == 0
+    if DEBUG:
+        assert out.shape[0] == n
+        assert out.shape[1] == n
+        assert theta.shape[0] == n_triu + n
+        assert np.all(np.asarray(out) == 0)
+
+    pi = zeros(n)
+    for i in range(n):
+        pi[i] = exp(theta[n_triu+i])
+
+    for u in range(n_triu):
+        k_to_ij(u, n, &i, &j)
+        s_ij = theta[u]
+
+        if DEBUG:
+            assert 0 <= u < n*(n-1)/2
+
+        K_ij = s_ij * sqrt(pi[j] / pi[i])
+        K_ji = s_ij * sqrt(pi[i] / pi[j])
+        if buildS:
+           out[i, j] = s_ij
+           out[j, i] = s_ij
+        else:
+            out[i, j] = K_ij
+            out[j, i] = K_ji
+        out[i, i] -= K_ij
+        out[j, j] -= K_ji
+
+    if DEBUG:
+        assert np.allclose(np.array(out).sum(axis=1), 0.0)
+        assert np.allclose(scipy.linalg.expm(np.array(out)).sum(axis=1), 1)
+        assert np.all(0 < scipy.linalg.expm(np.array(out)))
+        assert np.all(1 > scipy.linalg.expm(np.array(out)))
+
+    return 0
+
+
+cpdef double dK_dtheta_ij(const double[::1] theta, npy_intp n, npy_intp u,
+                          double[:, ::1] A=None, double[:, ::1] out=None) nogil:
+    r"""dK_dtheta_ij(theta, n, u, A=None, out=None)
+
+    Compute :math:`dK_ij / dtheta_u` over all `i`, `j` for fixed `u`.
+
+    Along with `dK_dtheta_u`, this function computes a slice of the 3-index
+    tensor :math:`dK_ij / dtheta_u`, the derivative of the rate matrix `K`
+    with respect to the free parameters,`\theta`. This function computes a 2D
+    slice of this tensor over all (i,j) for a fixed `u`.
+
+    Furthermore, this function _additionally_ makes it possible, using the
+    argument `A`, to compute the hadamard product of this slice with a given
+    matrix A directly.  Since dK/dtheta_u is a sparse matrix with a known
+    sparsity structure, it's more efficient to just do the hadamard as we
+    construct it, and never save the matrix elements directly.
+
+    Parameters
+    ----------
+    theta : array
+        The free parameters, `\theta`. These values are the linearized elements
+        of the upper triangular portion of the symmetric rate matrix, S,
+        followed by the log equilibrium weights.
+    n : int
+        Dimension of the rate matrix, K, (number of states)
+    u : int
+        The index, `0 <= u < len(theta)` of the element in `theta` to
+        construct the derivative of the rate matrix, `K` with respect to.
+    A : array of shape=(n, n), optional
+        If not None, an arbitrary (n, n) matrix to be multiplied element-wise
+        with the derivative of the rate matrix, dKu.
+    out : [output], optional array of shape=(n, n)
+        If not None, out will contain the matrix dKu on exit.
+
+    Returns
+    -------
+    s : double
+        The sum of the element-wise product of dK/du and A, if A is not None.
+    """
+    cdef npy_intp n_triu = n*(n-1)/2
+    cdef npy_intp a, i, j
+    cdef double dK_i, s_ij, dK_ij, dK_ji, pi_i, pi_j
+    cdef double sum_elem_product = 0
+
+    if DEBUG:
+        assert out.shape[0] == n and out.shape[1] == n
+        assert A.shape[0] == n and A.shape[1] == n
+        assert theta.shape[0] == n_triu + n
+
+    if out is not None:
+        memset(&out[0,0], 0, n*n*sizeof(double))
+
+    if u < n_triu:
+        # the perturbation is to the triu rate matrix
+        # first, use the linear index, u, to get the (i,j)
+        # indices of the symmetric rate matrix
+        k_to_ij(u, n, &i, &j)
+
+        s_ij = theta[u]
+        pi_i = exp(theta[n_triu+i])
+        pi_j = exp(theta[n_triu+j])
+        dK_ij = sqrt(pi_j / pi_i)
+        dK_ji = sqrt(pi_i / pi_j)
+
+        if A is not None:
+            sum_elem_product = (
+                A[i,j]*dK_ij + A[j,i]*dK_ji
+              - A[i,i]*dK_ij - A[j,j]*dK_ji
+            )
+
+        if out is not None:
+            out[i, j] = dK_ij
+            out[j, i] = dK_ji
+            out[i, i] -= dK_ij
+            out[j, j] -= dK_ji
+
+    else:
+        # the perturbation is to the equilibrium distribution
+
+        # `i` is now the index, in `pi`, of the perturbed element
+        # of the equilibrium distribution.
+        i = u - n_triu
+        pi_i = exp(theta[n_triu+i])
+
+        # the matrix dKu has 1 nonzero row, 1 column, and the diagonal. e.g:
+        #
+        #    x     x
+        #      x   x
+        #        x x
+        #    x x x x x x
+        #          x x
+        #          x   x
+
+        for j in range(n):
+            if j == i:
+                continue
+
+            k = ij_to_k(i, j, n)
+            s_ij = theta[k]
+            pi_j = exp(theta[n_triu+j])
+            dK_ij = -0.5 * s_ij * sqrt(pi_j / pi_i)
+            dK_ji = 0.5  * s_ij * sqrt(pi_i / pi_j)
+
+            if A is not None:
+                sum_elem_product += (
+                    A[i,j]*dK_ij + A[j,i]*dK_ji
+                  - A[i,i]*dK_ij - A[j,j]*dK_ji
+                )
+
+            if out is not None:
+                out[i, j] = dK_ij
+                out[j, i] = dK_ji
+                out[i, i] -= dK_ij
+                out[j, j] -= dK_ji
+
+    return sum_elem_product

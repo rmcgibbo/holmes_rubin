@@ -3,7 +3,7 @@ Utilities related to indexing upper triangular matrices with a diagonal
 offset of 1. The semantics match ``numpy.triu_indices(n, k=1)``
 """
 from numpy cimport npy_intp
-
+from libc.math cimport sqrt
 
 cdef inline npy_intp ij_to_k(npy_intp i, npy_intp j, npy_intp n) nogil:
     """2D (i, j) square matrix index to linearized upper triangular index
