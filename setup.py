@@ -8,16 +8,11 @@ ext1 = Extension('holmes_rubin',
          sources=['holmes_rubin.pyx'],
          include_dirs=[np.get_include()])
 
-ext2 = Extension('kalbfleisch_lawless',
-         language='c++',
-         sources=['kalbfleisch_lawless.pyx'],
-         include_dirs=[np.get_include()])
-
 setup(name='holmes_rubin',
       author='Robert McGibbon',
       author_email='rmcgibbo@gmail.com',
       url='https://github.com/rmcgibbo/holmes_rubin',
       platforms=['Linux', 'Mac OS-X', 'Unix'],
       zip_safe=False,
-      ext_modules=[ext1, ext2],
+      ext_modules=[ext1],
       cmdclass={'build_ext': build_ext})
