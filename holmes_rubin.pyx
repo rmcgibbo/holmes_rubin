@@ -338,20 +338,7 @@ cdef class ReversibleHolmesRateMatrixEMFitter(object):
 cpdef eig_K(const double[:, ::1] A, npy_intp n):
     r"""eig_K(A, n)
 
-    Diagonalize the rate matrix, K, from either the matrix K or the symmetric
-    rate matrix, S.
-
-    If which == 'K', the first argument should be the rate matrix, K, and `pi`
-    is ignored. If which == 'S', the first argument should be the symmetric
-    rate matrix, S. This can be build using buildK(... which='S'), and pi
-    should contain the equilibrium distribution (left eigenvector of K with
-    eigenvalue 0, and also the last n elements of exptheta).
-
-    Whichever is supplied the return value is the eigen decomposition of `K`.
-    The eigendecomposition of S is not returned.
-
-    Using the symmetric rate matrix, S, is somewhat faster and more numerically
-    stable.
+    Diagonalize the rate matrix, K.
 
     Returns
     -------
